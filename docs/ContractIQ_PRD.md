@@ -12,6 +12,7 @@
 
 1. [Problem Definition](#1-problem-definition)
 2. [Solution Definition](#2-solution-definition)
+   - 2.6 [Admin Dashboard](#26-admin-dashboard)
 3. [Technical Requirements](#3-technical-requirements)
 4. [Prioritisation](#4-prioritisation)
 5. [Roadmap](#5-roadmap)
@@ -227,7 +228,263 @@ Results Page → Click "Chat" Tab → Type Question → OpenAI Response (grounde
 
 ---
 
-## 3. Technical Requirements
+### 2.6 Admin Dashboard
+
+> **Generic pattern note:** This section is written as a reusable admin layer specification. The panels, metrics, and guardrails described here apply to any SaaS product running an LLM pipeline — swap ContractIQ-specific terms (contract, NDA, extraction) for your domain equivalents.
+
+#### Admin Authentication & Role Isolation
+
+Admin access is a separate role, not a flag on the user table. On login, the server checks the user's role:
+
+- `role = 'user'` → redirect to `/dashboard`
+- `role = 'admin'` → redirect to `/admin`
+
+Admins can never access or mutate user-owned data (contracts, chat, key terms) through the admin UI. The admin layer reads from aggregated views and system tables only. Admin sessions expire after 30 minutes of inactivity (shorter than standard user sessions). All admin actions are written to an `admin_audit_log` table with `admin_id`, `action`, `target`, and `timestamp`.
+
+#### Admin Flow
+
+```
+/admin/login → Role check → /admin (Overview) 
+→ Sidebar nav: Users | AI Cost & Pricing | AI Performance | Feedback | Ops KPIs | System Health | Model Config | Audit Log
+```
+
+#### Admin Dashboard Panels
+
+**Panel 1 — Overview Strip (always visible, top of every admin page)**
+
+A single row of KPI tiles refreshed every 5 minutes:
+
+| Tile | Metric | Delta shown |
+|---|---|---|
+| Total Users | Cumulative registered accounts | +N this week |
+| Active Users (30d) | Users who processed ≥ 1 contract in last 30 days | vs. prior 30d |
+| Contracts This Month | Total analyses run in current calendar month | vs. last month |
+| OpenAI Spend (MTD) | Month-to-date OpenAI API cost in USD | % of monthly budget |
+| Avg Extraction Latency | P95 latency for extraction calls (rolling 24h) | vs. 7d average |
+| Correction Rate | % of extracted terms manually corrected (rolling 7d) | vs. prior 7d |
+
+---
+
+**Panel 2 — User Analytics**
+
+- Signup trend: daily new registrations, chart (line, last 90 days)
+- Retention cohort: 7-day and 30-day retention by signup week (table)
+- Plan distribution: breakdown of users by plan (Free Trial / Starter / Growth / Pro) — donut chart
+- Churn rate: % of paid users who cancelled in the last 30 days
+- Geographic distribution: country-level signup count (table, top 10)
+- Date range filter: 7d / 30d / 90d / custom — applies to all charts in this panel
+
+---
+
+**Panel 3 — AI Cost Monitor**
+
+- **Total spend:** Daily OpenAI cost chart (bar, last 30 days); MTD and last-month totals
+- **Cost by feature:** Breakdown of tokens consumed — Extraction vs Chat vs Retry calls (stacked bar)
+- **Cost per contract:** Rolling average cost per analysis; trend line; flag if > $0.25 threshold
+- **Token breakdown:** Input tokens vs output tokens; model tier used per call
+- **Budget tracker:** Configurable monthly budget ceiling; progress bar (green → amber at 80% → red at 100%); alert emails triggered at 80% and 100% thresholds
+- **Projection:** Estimated end-of-month spend based on current daily burn rate
+
+**Cost Calculation Explainer (always visible in this panel)**
+
+A collapsible "How is this calculated?" section that is open by default — intended to orient a new admin who has never set a budget before:
+
+```
+Your cost = (prompt tokens × input rate) + (completion tokens × output rate)
+
+Current model:  gpt-4o
+Input rate:     $0.000005 per token   ← stored in system_config.model_input_rate
+Output rate:    $0.000015 per token   ← stored in system_config.model_output_rate
+
+Typical 15-page NDA:
+  Extraction call:  ~14,000 prompt tokens + 400 output tokens  =  $0.076
+  Chat (5 turns):   ~15,000 prompt tokens + 250 output tokens  =  $0.079
+  ─────────────────────────────────────────────────────────────────────────
+  Total per contract:                                           ≈ $0.155
+
+Your plan margin at current pricing:
+  Starter plan user  →  pays $19/mo for 10 contracts  →  you earn $17.45/contract
+  Growth plan user   →  pays $49/mo for 40 contracts  →  you earn $0.68/contract
+  Pro plan user      →  pays $129/mo unlimited        →  breakeven at ~83 contracts/mo
+```
+
+This explainer re-renders live whenever the admin changes model rates or plan pricing in Panel 10. It answers: "What does each analysis actually cost me, and what margin am I making per plan?"
+
+---
+
+**Panel 4 — Model Configuration**
+
+- **Current model in use:** Displays active model ID (e.g. `gpt-4o`), temperature settings for extraction and chat, max token limits — read-only display
+- **Model history:** Table of previous model configurations with timestamp and changed-by field
+- **Override flag:** A single "Pause AI Processing" toggle that sets all new contract jobs to `status = 'queued'` without failing them — use during model migrations or outages. Requires confirmation dialog + writes to audit log.
+- **Planned model switch:** Ability to stage a model change (e.g. switch to `gpt-4o-mini` for cost reduction) with an effective date; does not require a code deploy — reads from a `system_config` table
+
+---
+
+**Panel 5 — AI Performance Monitoring**
+
+- **Extraction accuracy trend:** Correction rate (% of terms edited by users) plotted daily — alert band shown at 12% threshold
+- **Confidence score distribution:** Histogram of confidence scores across all extractions in the selected period — shows whether the model is over- or under-confident
+- **Low-confidence term frequency:** Top 10 terms most frequently flagged as low-confidence (< 50%) — signals which terms need prompt improvement
+- **Chat groundedness:** % of chat sessions where users clicked a page citation vs. total chat sessions (proxy for grounded responses)
+- **Error rate:** % of contract analyses that ended in `status = 'error'`; breakdown by error type (OpenAI timeout, parse failure, PDF extraction failure)
+- **Retry rate:** % of OpenAI calls that required a retry prompt (JSON parse failure recovery) — elevated rate signals prompt drift
+
+---
+
+**Panel 6 — User Feedback Loop**
+
+- **Aggregate rating:** Distribution of thumbs-up / thumbs-down across all feedback submissions (donut + count)
+- **NPS trend:** Net Promoter Score computed from in-app survey responses, plotted weekly
+- **Recent feedback:** Paginated table of raw user feedback entries (rating, optional comment, contract type, date) — admin can filter by rating or date range
+- **Correction heatmap:** Which standard key terms are most frequently corrected (term name vs. correction count) — informs next prompt iteration
+- **Feedback-to-fix pipeline:** A lightweight triage column next to recent feedback: admin can mark a feedback item as "Reviewed", "Prompt fix needed", or "Won't fix" — status stored in `user_feedback.admin_status`
+
+---
+
+**Panel 7 — Performance & System Health**
+
+- **API latency:** P50 / P95 / P99 extraction latency (last 24h, 7d) — line chart
+- **Uptime:** Rolling 30-day uptime percentage; incident timeline (sourced from status page or manual entry)
+- **Queue depth:** Number of contracts in `status = 'processing'` or `status = 'pending'` at any given time — detects stuck jobs
+- **Error log:** Last 50 system errors with timestamp, type, contract_id (if applicable), and stack trace excerpt
+- **Supabase health:** DB connection pool usage; storage bucket used/total; realtime connection count
+
+---
+
+**Panel 8 — Operational KPIs**
+
+- **North Star:** Average time from upload to completed review — target ≤ 15 minutes (tracked per session)
+- **Activation rate:** % of registered users who processed at least one contract
+- **Feature adoption:** % of users who used: custom terms / chat / inline editing / export — funnel view
+- **Contract type split:** NDA vs MSA volume over time (stacked area chart)
+- **Revenue metrics (if billing active):** MRR, ARR, average revenue per user, trial-to-paid conversion rate
+- **Support proxy:** Count of sessions where a user re-uploaded the same contract (signals confusion or failure)
+
+---
+
+**Panel 9 — Audit Log**
+
+- Append-only table: every admin action recorded with `admin_id`, `action_type`, `target_entity`, `before_value`, `after_value`, `timestamp`
+- Filterable by admin, action type, and date range
+- Non-deletable — admin cannot clear the audit log from the UI; only a database superuser can
+
+---
+
+**Panel 10 — Pricing & Budget Configuration**
+
+This is the single place where admin sets what things cost and how customers are charged. Every value here writes to `system_config` with a confirmation dialog and an audit log entry.
+
+**Section A — AI Cost Inputs (what you pay)**
+
+| Field | Description | Default | Stored in |
+|---|---|---|---|
+| Monthly AI budget ceiling | Hard cap on total OpenAI spend this calendar month | $500 | `system_config.monthly_budget_usd` |
+| Model input token rate | Cost per input token for the active model | $0.000005 | `system_config.model_input_rate` |
+| Model output token rate | Cost per output token for the active model | $0.000015 | `system_config.model_output_rate` |
+| Avg tokens per extraction | Admin-configurable estimate used in margin preview (does not affect actual billing) | 14500 | `system_config.avg_extraction_tokens` |
+| Avg tokens per chat turn | Estimate for margin calculator only | 3000 | `system_config.avg_chat_tokens` |
+| Avg chat turns per session | Estimate for margin calculator only | 5 | `system_config.avg_chat_turns` |
+
+> These inputs power the Cost Calculation Explainer in Panel 3 and the Margin Simulator below. When the admin updates model rates here, Panel 3 re-renders immediately.
+
+**Section B — Plan Limits (what you enforce per customer)**
+
+Admin sets the contract allowance per plan. When a user hits their monthly limit, the upload screen shows an upgrade prompt and blocks processing.
+
+| Plan | Contracts per month | Hard-block at limit? | Trial length |
+|---|---|---|---|
+| Free Trial | 5 | Yes — show upgrade wall | 14 days |
+| Starter | 10 | Yes — show upgrade wall | — |
+| Growth | 40 | Yes — show upgrade wall | — |
+| Pro | Unlimited | No | — |
+
+All four rows are editable by the admin. Changes take effect at the start of the next billing cycle for existing users; immediately for new users.
+
+**Section C — Plan Pricing (what you charge customers)**
+
+| Plan | Monthly price (USD) | Admin can edit | Notes |
+|---|---|---|---|
+| Free Trial | $0 | No | Fixed |
+| Starter | $19 | Yes | |
+| Growth | $49 | Yes | |
+| Pro | $129 | Yes | |
+
+> Price changes do not auto-update existing subscriptions. A warning banner appears: "Changing this price will apply to new subscribers only. Existing subscribers keep their current rate until they change plans."
+
+**Section D — Margin Simulator**
+
+A live read-only table that re-calculates whenever Section A or C values change. Shows the admin what they earn (or lose) per plan at current settings:
+
+| Plan | Price/mo | Contract limit | AI cost at limit | Gross margin | Margin % |
+|---|---|---|---|---|---|
+| Starter | $19 | 10 | 10 × $0.155 = $1.55 | $17.45 | 91.8% |
+| Growth | $49 | 40 | 40 × $0.155 = $6.20 | $42.80 | 87.3% |
+| Pro | $129 | ∞ (show at 100 contracts) | 100 × $0.155 = $15.50 | $113.50 | 87.9% |
+
+The "AI cost at limit" column uses `avg_extraction_tokens` + `avg_chat_tokens × avg_chat_turns` from Section A, multiplied by the current token rates, to compute cost per contract. The formula is shown inline beneath the table as a one-liner so the admin understands exactly what's driving the number — not a black box.
+
+**Section E — Budget Enforcement Rules**
+
+What happens when spend thresholds are hit:
+
+| Threshold | Action |
+|---|---|
+| 80% of monthly budget | Email alert to all admin accounts; amber warning tile in Overview Strip |
+| 100% of monthly budget | Email alert; red warning tile; new contract processing is paused (jobs queue); admin must either raise the budget ceiling or wait for next calendar month |
+| Per-user plan limit reached | User's upload button is disabled; upgrade prompt shown; existing completed contracts remain accessible |
+
+The 100% budget pause behaves identically to the manual "Pause AI Processing" toggle — jobs queue, not fail.
+
+---
+
+#### Admin Functional Requirements
+
+| ID | Requirement | Priority |
+|---|---|---|
+| AF-01 | Admin role must be enforced server-side via a separate RLS policy; client-side role checks alone are insufficient | P0 |
+| AF-02 | All admin routes (`/admin/*`) must redirect unauthenticated or non-admin users to `/login` | P0 |
+| AF-03 | The OpenAI cost monitor must display MTD spend in USD with a configurable monthly budget ceiling and threshold alerts at 80% and 100% | P0 |
+| AF-04 | The current active model, temperature settings, and token limits must be readable from a `system_config` table — not hardcoded in application code | P0 |
+| AF-05 | All admin actions that mutate system state (model override, AI pause, budget limit change) must be confirmed via a dialog and written to `admin_audit_log` | P0 |
+| AF-06 | Every chart and table in the admin dashboard must support a date range filter (7d / 30d / 90d / custom) | P1 |
+| AF-07 | All tabular admin data (user list, feedback, correction heatmap, audit log) must be exportable as CSV | P1 |
+| AF-08 | The correction rate panel must surface an in-UI alert banner when the 7-day rolling correction rate exceeds 12% | P1 |
+| AF-09 | Admin sessions must expire after 30 minutes of inactivity; the session timer must reset on any user interaction | P1 |
+| AF-10 | The "Pause AI Processing" toggle must queue new jobs (not fail them) and resume processing in order when toggled off | P1 |
+| AF-11 | Each KPI tile in the overview strip must display a delta vs. the prior equivalent period so trend direction is always visible | P2 |
+| AF-12 | The feedback triage column must allow admin to mark feedback items with a status (`Reviewed` / `Prompt fix needed` / `Won't fix`) stored in `user_feedback.admin_status` | P2 |
+| AF-13 | Model token rates (`model_input_rate`, `model_output_rate`) must be stored in `system_config` and editable from Panel 10 — changing them must re-render the Cost Explainer in Panel 3 and the Margin Simulator in Panel 10 without a page reload | P0 |
+| AF-14 | When a user's monthly contract count reaches their plan limit, the system must block the upload route server-side (not just client-side) and return a `402` with an `upgrade_required` payload; the frontend renders an upgrade wall | P0 |
+| AF-15 | When cumulative MTD OpenAI spend reaches 100% of `monthly_budget_usd`, all new contract processing jobs must be queued (not failed); admin must receive an email alert within 5 minutes; the Overview Strip tile must turn red | P0 |
+| AF-16 | Plan contract limits and monthly prices must be editable from Panel 10 with a confirmation dialog; changes to pricing must show a warning that existing subscribers are unaffected; all changes must be written to `admin_audit_log` | P1 |
+| AF-17 | The Margin Simulator (Panel 10 Section D) must display the cost-per-contract formula inline beneath the table — not hidden — so any admin can verify the calculation without opening documentation | P1 |
+
+---
+
+#### 8 Spec-Writing Rules for Admin Dashboards (Generic)
+
+These rules apply to any product admin layer — not ContractIQ-specific:
+
+1. **Role isolation over role flags.** Never implement admin as `is_admin = true` on the users table. Use a separate role in your auth system with its own RLS policies. A compromised user JWT should never escalate to admin access.
+
+2. **Separate every metric by date range.** Every chart and counter must have a date range picker. Absolute totals without time context are misleading — a "1,200 users" headline means nothing without knowing if that's growth or plateau.
+
+3. **Cost monitoring is a first-class feature.** For any product with an LLM pipeline, the cost monitor is not a nice-to-have — it's P0. Budget threshold alerts (80% / 100%) must fire before the bill arrives, not after. Break costs down by feature, not just total.
+
+4. **Model config must be data-driven, not code-driven.** Store the active model ID, temperature, and token limits in a `system_config` or `feature_flags` table. Switching models should not require a deployment. The admin UI reads and (with confirmation) writes this table.
+
+5. **Correction rate is your AI health proxy.** In extraction/classification products, the rate at which users manually correct AI output is a leading indicator of model drift or prompt degradation. Surface it prominently and alert on it automatically — don't wait for user complaints.
+
+6. **All write actions require confirmation + audit trail.** Mutating system config (pausing AI, changing model, adjusting budget limits) must go through a confirmation dialog and be logged immutably. Admins make mistakes; the log is your undo history.
+
+7. **Design for zero-state.** On day one there are no users, no contracts, no feedback. Every panel must have a meaningful zero-state: not an empty chart, but a setup checklist or a "nothing here yet — here's what to do" instruction. Blank dashboards erode trust.
+
+8. **Queue, don't fail.** When toggling an AI feature off for maintenance, new jobs should enter a queue — not return errors to users. The job runs when the feature is re-enabled. Silent queuing with a "processing delayed" status message is far better than a failed state the user has to retry manually.
+
+9. **Separate read latency from write latency in performance panels.** Showing a single "API latency" number conflates read (dashboard load) and write (extraction, chat) operations which have completely different performance budgets. The number that matters for user trust is the write path — display it separately as "AI processing latency."
+
+---
 
 ### Architecture Overview
 
