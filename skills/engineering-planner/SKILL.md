@@ -1,7 +1,7 @@
 ---
 name: engineering-planner
 description: >
-   Transforms a PRD, product brief, feature request, or project description into a comprehensive Engineering Document (High-Level Design). Trigger when a user asks to create an engineering document, engineering doc, HLD, system architecture, technical design, or wants to convert requirements into a technical plan. The output defines the application architecture, technology stack, core components,data flow, APIs, database design, integrations, security considerations,deployment approach, and implementation roadmap before development begins.
+   Transforms a PRD, product brief, feature request, or project description into a comprehensive Engineering Document (High-Level Design). Trigger when a user asks to create an engineering document, engineering doc, HLD, system architecture, technical design, or wants to convert requirements into a technical plan. The output defines the application architecture, technology stack, core components,data flow, APIs, database design, integrations, security considerations,deployment approach, and implementation roadmap before development begins. The output is a single markdown file `docs/engineering/engineering-doc.md` that serves as the authoritative reference for the engineering team.
 ---
 
 **Frontend:** Next.js (fixed — do not ask about frontend framework).
