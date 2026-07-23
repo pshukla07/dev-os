@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design system tokens as CSS custom properties — from docs/design.md */
+:root {
+  /* Primitive palette */
+  --color-blue-500:   #115ACB;
+  --color-blue-600:   #0044AE;
+  --color-blue-50:    #E7EFFC;
+  --color-blue-100:   #B6CFF5;
+
+  --color-grey-900:   #070A0E;
+  --color-grey-800:   #151719;
+  --color-grey-700:   #25272B;
+  --color-grey-500:   #4A4C4F;
+  --color-grey-300:   #8F9193;
+  --color-grey-200:   #C1C2C3;
+  --color-grey-100:   #DADADB;
+  --color-grey-50:    #F0F0F1;
+  --color-grey-25:    #FAFAFA;
+
+  --color-green-500:  #13A10E;
+  --color-green-50:   #E7F6E7;
+  --color-red-500:    #D13438;
+  --color-red-700:    #942528;
+  --color-red-50:     #FAEBEB;
+  --color-yellow-700: #DB8000;
+  --color-yellow-50:  #FFF9F0;
+  --color-yellow-800: #B36800;
+  --color-violet-500: #7F00FF;
+  --color-violet-50:  #F7F0FF;
+
+  /* Semantic tokens */
+  --text-primary:    var(--color-grey-900);
+  --text-secondary:  var(--color-grey-500);
+  --bg-white:        #FFFFFF;
+  --bg-surface:      var(--color-grey-25);
+  --bg-subtle:       var(--color-grey-50);
+  --brand:           var(--color-blue-500);
+  --brand-hover:     var(--color-blue-600);
+
+  /* Spacing (4px grid) */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-28: 112px;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter Display', 'Inter', system-ui, sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: 0;
+  }
+
+  /* Typography scale — from docs/design.md */
+  .type-h5     { font-size: 24px; font-weight: 500; line-height: 32px; letter-spacing: 0; }
+  .type-body-lg{ font-size: 16px; font-weight: 500; line-height: 24px; letter-spacing: 0; }
+  .type-body-sm{ font-size: 12px; font-weight: 400; line-height: 18px; letter-spacing: 0; }
+}
+
+@layer components {
+  /* ── Buttons ── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           rounded-md bg-brand-primary text-white font-medium text-sm
+           transition-colors duration-100
+           hover:bg-brand-primary-dark
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           rounded-md bg-white text-brand-primary font-medium text-sm
+           border border-brand-border
+           transition-colors duration-100
+           hover:bg-brand-border-subtle
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2
+           rounded-md text-ds-grey-500 font-medium text-sm
+           transition-colors duration-100
+           hover:bg-brand-border-subtle hover:text-ds-grey-900
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           rounded-md bg-brand-error text-white font-medium text-sm
+           transition-colors duration-100
+           hover:opacity-90
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* ── Card ── */
+  .card {
+    @apply bg-white rounded-lg border border-brand-border;
+  }
+
+  /* ── Input ── */
+  .input {
+    @apply w-full px-3 py-2.5 rounded-md border border-brand-border bg-white
+           text-ds-grey-900 text-sm placeholder-ds-grey-300
+           transition-colors duration-100
+           focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent
+           disabled:bg-brand-surface disabled:cursor-not-allowed;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-ds-grey-900 mb-1.5;
+  }
+
+  /* ── Confidence badges ── */
+  .badge-confidence-high {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-confidence-high-bg text-confidence-high
+           border border-confidence-high/20;
+  }
+
+  .badge-confidence-medium {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-confidence-medium-bg text-confidence-medium
+           border border-confidence-medium/20;
+  }
+
+  .badge-confidence-low {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-confidence-low-bg text-confidence-low
+           border border-confidence-low/20;
+  }
+
+  /* ── Status badges (design system semantic status badge) ── */
+  .badge-success {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-green-50 text-ds-green-500 border border-ds-green-100;
+  }
+
+  .badge-error {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-red-50 text-ds-red-700 border border-ds-red-100;
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-yellow-50 text-ds-yellow-800 border border-ds-yellow-50;
+  }
+
+  .badge-info {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-blue-50 text-brand-primary border border-ds-blue-100;
+  }
+
+  .badge-custom {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-violet-50 text-ds-violet-500 border border-ds-violet-100;
+  }
+
+  .badge-edited {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium
+           bg-ds-blue-50 text-brand-primary border border-ds-blue-100;
+  }
+
+  .badge-neutral {
+    @apply inline-flex items-center px-2 py-0.5 rounded
+           text-xs font-medium uppercase tracking-wide
+           bg-brand-surface text-ds-grey-500 border border-brand-border;
+  }
+
+  /* ── Skeleton loader ── */
+  .skeleton {
+    @apply animate-pulse bg-brand-border-subtle rounded;
+  }
+}
+
+/* ── Chat scrollbar ── */
+.chat-messages {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-grey-100) transparent;
+}
+.chat-messages::-webkit-scrollbar       { width: 4px; }
+.chat-messages::-webkit-scrollbar-thumb {
+  background-color: var(--color-grey-100);
+  border-radius: 9999px;
+}
